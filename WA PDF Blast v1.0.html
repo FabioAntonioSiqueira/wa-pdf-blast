@@ -211,25 +211,31 @@ tr:last-child td{border-bottom:none;}
       <div>
         <div class="card">
           <div class="card-title">Documento PDF — Header do template</div>
+
           <div class="field">
-            <label>URL do PDF (Google Drive ou link público)</label>
-            <input type="text" id="templateDocUrl" placeholder="https://drive.google.com/uc?export=download&id=... ou {arquivo_pdf}"/>
-            <div class="hint">
-              Cole a URL direta do arquivo <strong>(mesmo PDF para todos)</strong>, ou digite <code>{arquivo_pdf}</code> para usar a coluna da planilha <strong>(PDF diferente por pessoa)</strong>.<br><br>
-              Para gerar link direto do Google Drive:<br>
-              Compartilhar → Qualquer pessoa com o link →<br>
-              <code>https://drive.google.com/uc?export=download&id=ID_DO_ARQUIVO</code>
+            <label>Tipo de header do template</label>
+            <select id="headerMode" onchange="toggleHeaderFields()">
+              <option value="static">PDF estático — fixo no template (mais comum)</option>
+              <option value="dynamic">PDF dinâmico — variável via API</option>
+            </select>
+            <div class="hint">Se você fez upload do PDF ao criar o template na Meta → <strong>Estático</strong>. Se o template foi aprovado com URL variável → <strong>Dinâmico</strong>.</div>
+          </div>
+
+          <div id="staticInfo" class="info-box green" style="margin-bottom:0;font-size:12px;">
+            ✅ <strong>Header estático:</strong> o PDF já está fixo no template aprovado pela Meta. A API envia apenas as variáveis do corpo — o PDF aparece automaticamente para o destinatário.
+          </div>
+
+          <div id="dynamicFields" style="display:none;">
+            <div class="field">
+              <label>URL do PDF (Google Drive ou link público)</label>
+              <input type="text" id="templateDocUrl" placeholder="https://drive.google.com/uc?export=download&id=... ou {arquivo_pdf}"/>
+              <div class="hint">Cole a URL direta <strong>(mesmo PDF para todos)</strong>, ou <code>{arquivo_pdf}</code> para usar a coluna da planilha.</div>
             </div>
-          </div>
-          <div class="field">
-            <label>Nome do arquivo exibido no WhatsApp</label>
-            <input type="text" id="templateDocFilename" placeholder="Ex: Manual_Boas_Praticas.pdf ou {nome_arquivo}"/>
-            <div class="hint">Nome que aparece para o destinatário ao receber o documento. Use <code>{nome_arquivo}</code> para puxar da planilha, ou escreva o nome fixo.</div>
-          </div>
-          <div class="info-box green" style="margin-bottom:0;font-size:12px;">
-            <strong>Dica de link direto do Google Drive:</strong><br>
-            Se o link do Drive for <code>https://drive.google.com/file/d/<strong>ABC123</strong>/view</code>, o link de download direto é:<br>
-            <code>https://drive.google.com/uc?export=download&id=<strong>ABC123</strong></code>
+            <div class="field" style="margin-bottom:0;">
+              <label>Nome do arquivo exibido no WhatsApp</label>
+              <input type="text" id="templateDocFilename" placeholder="Ex: Manual_Boas_Praticas.pdf ou {nome_arquivo}"/>
+              <div class="hint">Use <code>{nome_arquivo}</code> para puxar da planilha, ou escreva o nome fixo.</div>
+            </div>
           </div>
         </div>
 
@@ -426,8 +432,16 @@ function renderContacts(){
 function statusLabel(s){return s==='sent'?'enviado':s==='error'?'erro':'pendente';}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
 
+// ---- HEADER MODE ----
+function toggleHeaderFields(){
+  const mode=document.getElementById('headerMode').value;
+  document.getElementById('staticInfo').style.display=mode==='static'?'':'none';
+  document.getElementById('dynamicFields').style.display=mode==='dynamic'?'':'none';
+}
+
 // ---- PREVIEW ----
-document.getElementById('templateDocFilename').addEventListener('input',function(){
+const _fn = document.getElementById('templateDocFilename');
+if(_fn) _fn.addEventListener('input',function(){
   const v=this.value||'documento.pdf';
   document.getElementById('previewFilename').textContent=v.replace(/\{nome_arquivo\}/g,'Manual_Boas_Praticas.pdf');
 });
@@ -497,16 +511,20 @@ function buildMetaBody(c){
   const tplLang=document.getElementById('templateLang').value.trim()||'pt_BR';
 
   // PDF URL — pode ser fixo ou {arquivo_pdf}
-  const docUrl=fillVars(document.getElementById('templateDocUrl').value.trim(), c);
+  const docUrlEl=document.getElementById('templateDocUrl');
+  const docUrl=docUrlEl ? fillVars(docUrlEl.value.trim(), c) : '';
   // Nome do arquivo — pode ser fixo, {nome_arquivo}, ou fallback
-  const rawFilename=document.getElementById('templateDocFilename').value.trim();
+  const docFilenameEl=document.getElementById('templateDocFilename');
+  const rawFilename=docFilenameEl ? docFilenameEl.value.trim() : '';
   const docFilename=fillVars(rawFilename, c) || c.nome_arquivo || 'documento.pdf';
 
   const vars=getTemplateVars(c);
   const components=[];
 
-  // Header com PDF — só adiciona se tiver URL
-  if(docUrl){
+  // Header com PDF — só envia se o template tiver header dinâmico (variável)
+  // Templates com PDF estático (uploadado na criação) NÃO aceitam header via API
+  const headerMode = document.getElementById('headerMode').value;
+  if(headerMode === 'dynamic' && docUrl){
     components.push({
       type:'header',
       parameters:[{
